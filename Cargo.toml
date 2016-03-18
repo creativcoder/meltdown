@@ -1,0 +1,15 @@
+[package]
+name = "meltdown"
+version = "0.1.0"
+authors = ["Rahul Sharma <rsconceptx@gmail.com>"]
+
+[dependencies]
+hyper = "*"
+
+[[bin]]
+name="server"
+path="src/main.rs"
+
+[[bin]]
+name="client"
+path="src/client.rs"
