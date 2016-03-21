@@ -5,6 +5,7 @@ authors = ["Rahul Sharma <rsconceptx@gmail.com>"]
 
 [dependencies]
 hyper = "*"
+url = "0.5.7"
 
 [[bin]]
 name="server"
