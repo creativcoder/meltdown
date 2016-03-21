@@ -3,6 +3,8 @@ extern crate url;
 
 use std::fs::OpenOptions;
 use std::io::Read;
+use std::io::SeekFrom;
+use std::io::Seek;
 use std::thread;
 use std::fs::File;
 use std::io::Write;
@@ -17,15 +19,17 @@ struct Downloader {
     start: u64,
     end: u64,
     file_name: String,
+    cursor:u64
 }
 
 impl Downloader {
-    fn new(url: &str, start: u64, end: u64, file_name: &str) -> Self {
+    fn new(url: &str, start: u64, end: u64, file_name: &str,cursor:u64) -> Self {
         Downloader {
             url: url.to_owned(),
             start: start,
             end: end,
             file_name: file_name.to_owned(),
+            cursor:cursor
         }
     }
     fn download(&self) {
@@ -40,6 +44,7 @@ impl Downloader {
         let mut body: Vec<u8> = Vec::new();
         res.read_to_end(&mut body).unwrap();
         let mut file = DownloadManager::request_file(&self.file_name[..]);
+        file.seek(SeekFrom::Start(self.cursor));
         file.write_all(body.as_slice());
     }
 }
@@ -105,7 +110,8 @@ impl DownloadManager {
             println!("End Range {:?}", end_range);
             println!("Downloading part {} of {}", i, self.max_connection);
             self.task_queue
-                .push(Downloader::new(&self.url, start_range, end_range, "./rust-lang.html"));
+                .push(Downloader::new(&self.url, start_range, end_range, "./readme.txt",start_range));
+                
             self.task_queue[i].download();
             start_range = end_range + 1;
             end_range = (start_range - 1) * 2;
@@ -131,9 +137,9 @@ impl DownloadManager {
 
 fn main() {
     let mut manager = DownloadManager::new();
-    manager.add_url("https://www.rust-lang.org/")
+    manager.add_url("https://wordpress.org/plugins/about/readme.txt")
            .max_connection(8)
-           .file("./rust-lang.html")
+           .file("readme.txt")
            .finish();
     let _download_thread = thread::spawn(move || {
                                manager.start();
