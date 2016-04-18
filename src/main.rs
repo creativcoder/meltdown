@@ -35,6 +35,7 @@ impl Downloader {
         }
     }
     fn download(&self) {
+        
         let client = Client::new();
         let mut res = client.get(&self.url)
                             .header(if self.end == 0 {
@@ -49,11 +50,11 @@ impl Downloader {
         res.read_to_end(&mut body).unwrap();
         // Id incremented file parts
         let mut file = DownloadManager::request_file(&format!("{}{}", self.file_name, self.id)[..]);
-        file.seek(SeekFrom::Start(self.cursor));
+        //file.seek(SeekFrom::Start(self.cursor));
         file.write_all(body.as_slice());
+        
     }
 }
-
 
 type Url = String;
 
@@ -117,33 +118,23 @@ impl DownloadManager {
             (false, _) => println!("Download does not support resume"),
         }
         let mut start_range: u64 = 0;
-        let mut end_range: u64 = self.block_size as u64;
-        for i in 0..self.max_connection {
-            if end_range >= content_length {
-                Downloader::new(99,
-                                &self.url,
-                                content_length,
-                                0,
-                                "./readme.txt",
-                                content_length)
-                    .download();
-            } else {
-                println!("Downloading part {} of {}", i, self.max_connection);
-                self.task_queue
-                    .push(Downloader::new(i,
-                                          &self.url,
-                                          start_range,
-                                          end_range,
-                                          "./readme.txt",
-                                          start_range));
-                self.task_queue[i].download();
-                start_range = end_range + 1;
-                end_range = (start_range - 1) * 2;
+        let mut end_range: u64 = (content_length / self.max_connection as u64) - 1;
+        println!("Total size of file is {}",content_length);
+        println!("Block size to each connection: {}",end_range);
+        let mut i = 0;
+        while !(end_range > content_length) {
+            println!("Starting download from {} to {}",start_range,end_range);
+            Downloader::new(i,&self.url,start_range,end_range,"./big_buck_bunny.mp4",start_range).download();
+            start_range = end_range + 1;
+            end_range = ((start_range - 1) * 2)+1;
+            i+=1;  
             }
-        }
-        // self.join_them(self.task_queue);
+            let mut remaining_bytes = content_length - start_range;
+            if remaining_bytes != 0 {
+            Downloader::new(i,&self.url,start_range,0,"./big_buck_bunny.mp4",start_range).download();
+            println!("Download remaining bytes of {}",remaining_bytes);
+}
     }
-
     fn check_resume(&self) -> (bool, ContentLength) {
         let client = Client::new();
         let head_req = client.head(DownloadUrl::parse(&self.url).unwrap());
@@ -155,13 +146,6 @@ impl DownloadManager {
             Err(_) => (false, ContentLength(0)),
         }
     }
-
-    //    fn join_them(&self,task_queue:Vec<Downloader>) {
-    // let file = self.file_name;
-    // for i in task_queue {
-    // i.file_name
-    // }
-    // }
 
     fn request_file(path: &str) -> File {
         let file = OpenOptions::new()
@@ -179,11 +163,11 @@ impl DownloadManager {
 
 fn main() {
     let mut manager = DownloadManager::new();
-    manager.add_url("https://wordpress.org/plugins/about/readme.txt")
+    manager.add_url("http://www.sample-videos.com/video/mp4/360/big_buck_bunny_360p_50mb.mp4")
            .max_connection(4)
-           .file("readme.txt")
+           .file("big_buck_bunny.mp4")
            .finish();
-    let _download_thread = thread::spawn(move || {
+    let download_thread = thread::spawn(move || {
                                manager.start();
                            })
                                .join();
