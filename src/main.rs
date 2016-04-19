@@ -52,7 +52,7 @@ impl Downloader {
             cursor: cursor,
         }
     }
-    fn download(&self, sender:Sender<String>) {
+    fn download(&self, sender: Sender<String>) {
         let client = Client::new();
         println!("Worker {} Downloading", self.id);
         let mut res = client.get(&self.url)
@@ -83,7 +83,7 @@ pub struct DownloadManager {
     state: State,
     block_size: usize,
     resume: bool,
-    complete_queue: Vec<String>
+    complete_queue: Vec<String>,
 }
 
 impl DownloadManager {
@@ -96,7 +96,7 @@ impl DownloadManager {
             state: State::Initial,
             block_size: 1024,
             resume: false,
-            complete_queue: vec![]
+            complete_queue: vec![],
         }
     }
     pub fn add_url(&mut self, url: Url) -> &mut DownloadManager {
@@ -134,45 +134,56 @@ impl DownloadManager {
         let file_path = "./".to_owned() + self.file_path.clone().unwrap().to_str().unwrap();
         let url_str = self.url.clone().unwrap().to_string();
         while !(end_range > content_length) {
-            let worker = Downloader::new(parts_suffix,&url_str,start_range,end_range,&file_path,start_range);
+            let worker = Downloader::new(parts_suffix,
+                                         &url_str,
+                                         start_range,
+                                         end_range,
+                                         &file_path,
+                                         start_range);
             self.task_queue.push(worker);
             start_range = end_range + 1;
-            end_range = ((start_range - 1) * 2)+1;
-            parts_suffix+=1;
-            }
+            end_range = ((start_range - 1) * 2) + 1;
+            parts_suffix += 1;
+        }
 
-            let mut remaining_bytes = content_length - start_range;
-            if remaining_bytes != 0 {
-                let last_range = (start_range+remaining_bytes)-1;
-                let last_worker = Downloader::new(parts_suffix, &url_str, start_range, last_range, &file_path, start_range);
-                self.task_queue.push(last_worker);
-            }
+        let mut remaining_bytes = content_length - start_range;
+        if remaining_bytes != 0 {
+            let last_range = (start_range + remaining_bytes) - 1;
+            let last_worker = Downloader::new(parts_suffix,
+                                              &url_str,
+                                              start_range,
+                                              last_range,
+                                              &file_path,
+                                              start_range);
+            self.task_queue.push(last_worker);
+        }
 
-            for i in 0..self.task_queue.len() {
-                self.task_queue[i].download(tx.clone());
-                self.complete_queue.push(rx.recv().unwrap());
-            }
+        for i in 0..self.task_queue.len() {
+            self.task_queue[i].download(tx.clone());
+            self.complete_queue.push(rx.recv().unwrap());
+        }
         State::Completed(content_length)
     }
 
-    fn join(&self,file_path:&String) {
-        
+    fn join(&self, file_path: &String) {
+
         let final_download = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .append(true)
-            .open(&file_path).unwrap();
+                                 .read(true)
+                                 .write(true)
+                                 .create(true)
+                                 .append(true)
+                                 .open(&file_path)
+                                 .unwrap();
 
         let joiner = Command::new("python")
-                                 .arg("join.py")
-                                 .arg(&self.complete_queue.len().to_string())
-                                 .output()
-                                 .unwrap_or_else(|e| { panic!("failed to execute process: {}", e) });
-        for i in self.complete_queue.iter().map(|ref i|{
-                println!("{:?}",i );
-                fs::remove_file(i);
-            }){};
+                         .arg("join.py")
+                         .arg(&self.complete_queue.len().to_string())
+                         .output()
+                         .unwrap_or_else(|e| panic!("failed to execute process: {}", e));
+        for i in self.complete_queue.iter().map(|ref i| {
+            println!("{:?}", i);
+            fs::remove_file(i);
+        }) {}
 
     }
 
@@ -203,33 +214,36 @@ impl DownloadManager {
     }
 }
 
-fn main() {
-
-}
+fn main() {}
 
 #[test]
 fn test_download_sublime_deb_package() {
     let mut manager = DownloadManager::new();
-    let download_url = Url::parse("https://download.sublimetext.com/sublime-text_build-3103_amd64.deb").unwrap();
+    let download_url = Url::parse("https://download.sublimetext.\
+                                   com/sublime-text_build-3103_amd64.deb")
+                           .unwrap();
     manager.add_url(download_url.clone())
            .max_connection(4)
-           .file(
-            match download_url.path() {
-                Some(path_vec) => &path_vec[path_vec.len()-1],
-                None => "file.txt"
-                }
-            )
+           .file(match download_url.path() {
+               Some(path_vec) => &path_vec[path_vec.len() - 1],
+               None => "file.txt",
+           })
            .finish();
 
-    let download_thread = thread::spawn(move || { 
-        match manager.start() {
-            State::Completed(bytes) => { println!("Download complete of {} bytes",bytes ); },
-            _ => {}
-        }
-        let joiner = Command::new("python")
-                                 .arg("join.py")
-                                 .arg("6")
-                                 .output()
-                                 .unwrap_or_else(|e| { panic!("failed to execute process: {}", e) });
-    }).join();
+    let download_thread = thread::spawn(move || {
+                              match manager.start() {
+                                  State::Completed(bytes) => {
+                                      println!("Download complete of {} bytes", bytes);
+                                  }
+                                  _ => {}
+                              }
+                              let joiner = Command::new("python")
+                                               .arg("join.py")
+                                               .arg("6")
+                                               .output()
+                                               .unwrap_or_else(|e| {
+                                                   panic!("failed to execute process: {}", e)
+                                               });
+                          })
+                              .join();
 }
