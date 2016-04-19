@@ -5,4 +5,7 @@ authors = ["Rahul Sharma <rsconceptx@gmail.com>"]
 
 [dependencies]
 hyper = "*"
-url = "0.5.7"
+xdg = "^2.0"
+
+[dependencies.url]
+git = "https://github.com/servo/rust-url"
