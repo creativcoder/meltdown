@@ -214,8 +214,6 @@ impl DownloadManager {
     }
 }
 
-fn main() {}
-
 #[test]
 fn test_download_sublime_deb_package() {
     let mut manager = DownloadManager::new();
