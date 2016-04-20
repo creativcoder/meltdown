@@ -1,20 +1,17 @@
 extern crate hyper;
 extern crate url;
+extern crate crossbeam;
+
 
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
-use std::io::SeekFrom;
-use std::io::Seek;
-use std::thread;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
-use hyper::client::RequestBuilder;
 use hyper::Url as DownloadUrl;
-use std::collections::HashMap;
 use hyper::header::{Connection, AcceptRanges};
 use hyper::header::{ByteRangeSpec, Range, ContentLength};
 use hyper::Client;
@@ -54,7 +51,6 @@ impl Downloader {
     }
     fn download(&self, sender: Sender<String>) {
         let client = Client::new();
-        println!("Worker {} Downloading", self.id);
         let mut res = client.get(&self.url)
                             .header(if self.end == 0 {
                                 Range::Bytes(vec![ByteRangeSpec::AllFrom(self.start)])
@@ -64,12 +60,12 @@ impl Downloader {
                             .header(Connection::keep_alive())
                             .send()
                             .unwrap();
-        let mut body: Vec<u8> = Vec::new();
-        res.read_to_end(&mut body).unwrap();
-        // Id incremented file parts
         let file_name = format!("{}{}", self.file_name, self.id);
+        let mut body: Vec<u8> = Vec::new();
         let mut file = DownloadManager::request_file(&file_name[..]);
+        let bytes = res.read_to_end(&mut body).unwrap();
         file.write_all(body.as_slice());
+        body.clear();
         sender.send(file_name).unwrap();
     }
 }
@@ -141,12 +137,16 @@ impl DownloadManager {
                                          &file_path,
                                          start_range);
             self.task_queue.push(worker);
+            println!("Worker {}: Byte Range {}, {}",
+                     parts_suffix,
+                     start_range,
+                     end_range);
             start_range = end_range + 1;
             end_range = ((start_range - 1) * 2) + 1;
             parts_suffix += 1;
         }
 
-        let mut remaining_bytes = content_length - start_range;
+        let remaining_bytes = content_length - start_range;
         if remaining_bytes != 0 {
             let last_range = (start_range + remaining_bytes) - 1;
             let last_worker = Downloader::new(parts_suffix,
@@ -158,23 +158,19 @@ impl DownloadManager {
             self.task_queue.push(last_worker);
         }
 
-        for i in 0..self.task_queue.len() {
-            self.task_queue[i].download(tx.clone());
-            self.complete_queue.push(rx.recv().unwrap());
-        }
+        crossbeam::scope(|scope| {
+            for i in &self.task_queue {
+                let tx = tx.clone();
+                scope.spawn(move || {
+                    i.download(tx);
+                    // self.complete_queue.push(rx.recv().unwrap());
+                });
+            }
+        });
         State::Completed(content_length)
     }
 
     fn join(&self, file_path: &String) {
-
-        let final_download = OpenOptions::new()
-                                 .read(true)
-                                 .write(true)
-                                 .create(true)
-                                 .append(true)
-                                 .open(&file_path)
-                                 .unwrap();
-
         let joiner = Command::new("python")
                          .arg("join.py")
                          .arg(&self.complete_queue.len().to_string())
@@ -224,7 +220,7 @@ fn test_download_sublime_deb_package() {
            .max_connection(4)
            .file(match download_url.path() {
                Some(path_vec) => &path_vec[path_vec.len() - 1],
-               None => "file.txt",
+               None => "subl.deb",
            })
            .finish();
 
