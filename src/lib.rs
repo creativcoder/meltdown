@@ -37,6 +37,23 @@ struct Downloader {
     cursor: u64,
 }
 
+pub enum ReadResult {
+  Payload(Vec<u8>),
+  EOF
+}
+
+fn read_block<R: Read>(reader: &mut R) -> Result<ReadResult,()>{
+  let mut buf = vec![0;1024];
+  match reader.read(&mut buf) {
+    Ok(len) if len > 0 => {
+      buf.truncate(len);
+      Ok(ReadResult::Payload(buf))
+    }
+    Ok(_) => Ok(ReadResult::EOF),
+    Err(_) => Err(())
+  }
+}
+
 
 impl Downloader {
     fn new(id: usize, url: &str, start: u64, end: u64, file_name: &str, cursor: u64) -> Self {
@@ -50,6 +67,7 @@ impl Downloader {
         }
     }
     fn download(&self, sender: Sender<String>) {
+
         let client = Client::new();
         let mut res = client.get(&self.url)
                             .header(if self.end == 0 {
@@ -63,9 +81,16 @@ impl Downloader {
         let file_name = format!("{}{}", self.file_name, self.id);
         let mut body: Vec<u8> = Vec::new();
         let mut file = DownloadManager::request_file(&file_name[..]);
-        let bytes = res.read_to_end(&mut body).unwrap();
-        file.write_all(body.as_slice());
-        body.clear();
+        loop {
+          println!("Downloading from {}",self.id);
+          match read_block(&mut res) {
+            Ok(ReadResult::Payload(bytes)) => {
+              file.write(bytes.as_slice());
+            }
+            Ok(ReadResult::EOF) => {break;}
+            Err(_) => break
+          }  
+        }
         sender.send(file_name).unwrap();
     }
 }
@@ -163,7 +188,6 @@ impl DownloadManager {
                 let tx = tx.clone();
                 scope.spawn(move || {
                     i.download(tx);
-                    // self.complete_queue.push(rx.recv().unwrap());
                 });
             }
         });
@@ -171,14 +195,14 @@ impl DownloadManager {
     }
 
     fn join(&self, file_path: &String) {
-        let joiner = Command::new("python")
+        let _ = Command::new("python")
                          .arg("join.py")
                          .arg(&self.complete_queue.len().to_string())
                          .output()
                          .unwrap_or_else(|e| panic!("failed to execute process: {}", e));
-        for i in self.complete_queue.iter().map(|ref i| {
+        for _ in self.complete_queue.iter().map(|ref i| {
             println!("{:?}", i);
-            fs::remove_file(i);
+            let _ = fs::remove_file(i);
         }) {}
 
     }
@@ -212,6 +236,7 @@ impl DownloadManager {
 
 #[test]
 fn test_download_sublime_deb_package() {
+    use std::thread;
     let mut manager = DownloadManager::new();
     let download_url = Url::parse("https://download.sublimetext.\
                                    com/sublime-text_build-3103_amd64.deb")

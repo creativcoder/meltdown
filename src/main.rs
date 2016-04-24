@@ -20,14 +20,14 @@ fn main() {
            })
            .finish();
 
-    let download_thread = thread::spawn(move || {
+    let _ = thread::spawn(move || {
                               match manager.start() {
                                   State::Completed(bytes) => {
                                       println!("Download complete of {} bytes", bytes);
                                   }
                                   _ => {}
                               }
-                              let joiner = Command::new("python")
+                              let _ = Command::new("python")
                                                .arg("join.py")
                                                .arg("5")
                                                .output()
