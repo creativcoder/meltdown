@@ -4,6 +4,7 @@ extern crate crossbeam;
 
 
 use std::fs::OpenOptions;
+use std::ops::Div;
 use std::io::Read;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
@@ -35,10 +36,11 @@ struct Downloader {
     end: u64,
     file_name: String,
     cursor: u64,
+    content_length: u64
 }
 
 pub enum ReadResult {
-  Payload(Vec<u8>),
+  Payload(Vec<u8>,usize),
   EOF
 }
 
@@ -47,7 +49,7 @@ fn read_block<R: Read>(reader: &mut R) -> Result<ReadResult,()>{
   match reader.read(&mut buf) {
     Ok(len) if len > 0 => {
       buf.truncate(len);
-      Ok(ReadResult::Payload(buf))
+      Ok(ReadResult::Payload(buf,len))
     }
     Ok(_) => Ok(ReadResult::EOF),
     Err(_) => Err(())
@@ -56,7 +58,7 @@ fn read_block<R: Read>(reader: &mut R) -> Result<ReadResult,()>{
 
 
 impl Downloader {
-    fn new(id: usize, url: &str, start: u64, end: u64, file_name: &str, cursor: u64) -> Self {
+    fn new(id: usize, url: &str, start: u64, end: u64, file_name: &str, cursor: u64, content_length: u64) -> Self {
         Downloader {
             id: id,
             url: url.to_owned(),
@@ -64,6 +66,7 @@ impl Downloader {
             end: end,
             file_name: file_name.to_owned(),
             cursor: cursor,
+            content_length: content_length
         }
     }
     fn download(&self, sender: Sender<String>) {
@@ -81,16 +84,19 @@ impl Downloader {
         let file_name = format!("{}{}", self.file_name, self.id);
         let mut body: Vec<u8> = Vec::new();
         let mut file = DownloadManager::request_file(&file_name[..]);
+        let mut complete_len = 0u64;
         loop {
-          println!("Downloading from {}",self.id);
           match read_block(&mut res) {
-            Ok(ReadResult::Payload(bytes)) => {
+            Ok(ReadResult::Payload(bytes,len)) => {
+              print!("{:?} has downloaded {:?} bytes\r",self.id, complete_len);
+              complete_len += len as u64;
               file.write(bytes.as_slice());
             }
             Ok(ReadResult::EOF) => {break;}
             Err(_) => break
           }  
         }
+        println!("\nWORKER {} FINISHED",self.id);
         sender.send(file_name).unwrap();
     }
 }
@@ -160,7 +166,8 @@ impl DownloadManager {
                                          start_range,
                                          end_range,
                                          &file_path,
-                                         start_range);
+                                         start_range,
+                                         content_length);
             self.task_queue.push(worker);
             println!("Worker {}: Byte Range {}, {}",
                      parts_suffix,
@@ -179,7 +186,8 @@ impl DownloadManager {
                                               start_range,
                                               last_range,
                                               &file_path,
-                                              start_range);
+                                              start_range,
+                                              content_length);
             self.task_queue.push(last_worker);
         }
 

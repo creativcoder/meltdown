@@ -10,7 +10,7 @@ use meltdown::*;
 
 fn main() {
     let mut manager = DownloadManager::new();
-    let download_url = Url::parse("https://www.python.org/ftp/python/3.5.1/Python-3.5.1.tgz")
+    let download_url = Url::parse("http://releases.ubuntu.com/16.04/ubuntu-16.04-desktop-amd64.iso?_ga=1.88553821.715049987.1461163389")
                            .unwrap();
     manager.add_url(download_url.clone())
            .max_connection(8)
