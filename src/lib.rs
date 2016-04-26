@@ -1,15 +1,15 @@
 extern crate hyper;
 extern crate url;
 extern crate crossbeam;
+extern crate walkdir;
 
 
 use std::fs::OpenOptions;
-use std::ops::Div;
 use std::io::Read;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use hyper::Url as DownloadUrl;
@@ -17,6 +17,9 @@ use hyper::header::{Connection, AcceptRanges};
 use hyper::header::{ByteRangeSpec, Range, ContentLength};
 use hyper::Client;
 use url::Url;
+use walkdir::WalkDir;
+
+mod config;
 
 #[derive(Debug)]
 pub enum State {
@@ -143,7 +146,7 @@ impl DownloadManager {
         self.state = State::Ready;
     }
     pub fn start(&mut self) -> State {
-
+        fs::create_dir_all("./temp");
         let mut content_length: u64 = 0;
         let (tx, rx) = channel();
 
@@ -158,7 +161,8 @@ impl DownloadManager {
         let mut start_range: u64 = 0;
         let mut end_range: u64 = (content_length / self.max_connection as u64) - 1;
         let mut parts_suffix = 0;
-        let file_path = "./".to_owned() + self.file_path.clone().unwrap().to_str().unwrap();
+        let file_path = "./temp/".to_owned() + self.file_path.clone().unwrap().to_str().unwrap();
+        println!("File path is {}",file_path);
         let url_str = self.url.clone().unwrap().to_string();
         while !(end_range > content_length) {
             let worker = Downloader::new(parts_suffix,
@@ -202,18 +206,7 @@ impl DownloadManager {
         State::Completed(content_length)
     }
 
-    fn join(&self, file_path: &String) {
-        let _ = Command::new("python")
-                         .arg("join.py")
-                         .arg(&self.complete_queue.len().to_string())
-                         .output()
-                         .unwrap_or_else(|e| panic!("failed to execute process: {}", e));
-        for _ in self.complete_queue.iter().map(|ref i| {
-            println!("{:?}", i);
-            let _ = fs::remove_file(i);
-        }) {}
-
-    }
+    
 
     fn check_resume(&self) -> (bool, ContentLength) {
         let client = Client::new();
@@ -242,6 +235,46 @@ impl DownloadManager {
     }
 }
 
+pub fn join_part_files(file_name:&str ,file_path: &str) {
+  let mut completed = OpenOptions::new()
+                       .read(true)
+                       .write(true)
+                       .create(true)
+                       .append(true)
+                       .open(file_name).unwrap();
+      let mut buffer:Vec<u8> = Vec::new();
+      println!("Combining all part files into one");
+      for entry in WalkDir::new(file_path) {
+        let entry = entry.unwrap();
+         if !entry.path().is_dir() {
+          let mut part_fd = File::open(entry.path().display().to_string()).unwrap();
+          let _ = part_fd.read_to_end(&mut buffer);
+          completed.write_all(&buffer);
+          buffer.clear();
+         }
+      }
+    }
+
+#[test]
+fn test_combine_part_files() {
+  fs::create_dir_all("./temp");
+  let mut f1 = File::create("./temp/part1.txt").unwrap();
+  let part1 = b"meltdown\n";
+  f1.write_all(part1);
+  let mut f1 = File::create("./temp/part2.txt").unwrap();
+  let part1 = b"a download manager\n";
+  f1.write_all(part1);
+  let mut f1 = File::create("./temp/part3.txt").unwrap();
+  let part1 = b"written in Rust\n";
+  f1.write_all(part1);
+  join_part_files("./temp/joined.txt","./temp");
+  let mut complete_fd = File::open("./temp/joined.txt").unwrap();
+  let mut complete_buff: Vec<u8> = Vec::new();
+  complete_fd.read_to_end(&mut complete_buff);
+  assert_eq!("meltdown\na download manager\nwritten in Rust\n".len(), complete_buff.len());
+  fs::remove_dir_all("./temp");
+}
+
 #[test]
 fn test_download_sublime_deb_package() {
     use std::thread;
@@ -257,20 +290,14 @@ fn test_download_sublime_deb_package() {
            })
            .finish();
 
-    let download_thread = thread::spawn(move || {
+    let _ = thread::spawn(move || {
                               match manager.start() {
                                   State::Completed(bytes) => {
                                       println!("Download complete of {} bytes", bytes);
                                   }
                                   _ => {}
                               }
-                              let joiner = Command::new("python")
-                                               .arg("join.py")
-                                               .arg("6")
-                                               .output()
-                                               .unwrap_or_else(|e| {
-                                                   panic!("failed to execute process: {}", e)
-                                               });
-                          })
-                              .join();
+                              prefix.push(&file_name);
+                              join_part_files(prefix.to_str().unwrap(), "./temp");
+                          }).join();
 }

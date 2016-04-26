@@ -7,6 +7,7 @@ authors = ["Rahul Sharma <rsconceptx@gmail.com>"]
 hyper = "*"
 xdg = "^2.0"
 crossbeam = "0.2.5"
+walkdir = "0.1.5"
 
 [dependencies.url]
 git = "https://github.com/servo/rust-url"
