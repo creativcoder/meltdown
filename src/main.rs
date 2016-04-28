@@ -1,7 +1,6 @@
 extern crate meltdown;
 extern crate url;
 
-use std::path::PathBuf;
 use url::Url;
 use std::thread;
 
@@ -13,19 +12,14 @@ fn main() {
     let _ = config::setup_config_directories();
     let configurations = config::read_config();
     let mut manager = DownloadManager::new();
-    let mut prefix = PathBuf::from("./temp");
-    let mut file_name = String::new();
+    let prefix = config::default_cache_dir().unwrap();
     let download_url = Url::parse("https://www.python.org/ftp/python/3.5.1/Python-3.5.1.tar.xz")
                            .unwrap();
+    let url_path_vec = download_url.path_segments().unwrap().collect::<Vec<&str>>();
+    let file_name = url_path_vec[url_path_vec.len()-1].to_owned();
     manager.add_url(download_url.clone())
            .max_connection(configurations.max_connection)
-           .file(match download_url.path() {
-               Some(path_vec) => {
-                   file_name = path_vec[path_vec.len() - 1].clone();
-                   &path_vec[path_vec.len() - 1]
-               }
-               None => "python.tar.xz",
-           })
+           .file(&file_name.clone())
            .finish();
     let _ = thread::spawn(move || {
                 match manager.start() {
@@ -34,8 +28,7 @@ fn main() {
                     }
                     _ => {}
                 }
-                prefix.push(&file_name);
-                join_part_files(prefix.to_str().unwrap(), "./temp");
+                join_part_files(&file_name, prefix.to_str().unwrap());
             })
                 .join();
 

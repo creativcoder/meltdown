@@ -116,7 +116,7 @@ pub struct DownloadManager {
     task_queue: Vec<Downloader>,
     url: Option<Url>,
     max_connection: usize,
-    file_path: Option<PathBuf>,
+    file_name: Option<PathBuf>,
     state: State,
     block_size: usize,
     resume: bool,
@@ -129,7 +129,7 @@ impl DownloadManager {
             task_queue: vec![],
             url: None,
             max_connection: 0,
-            file_path: None,
+            file_name: None,
             state: State::Initial,
             block_size: 1024,
             resume: false,
@@ -144,8 +144,8 @@ impl DownloadManager {
         self.max_connection = max_con;
         self
     }
-    pub fn file(&mut self, file_path: &str) -> &mut DownloadManager {
-        self.file_path = Some(PathBuf::from(file_path));
+    pub fn file(&mut self, file_name: &str) -> &mut DownloadManager {
+        self.file_name = Some(PathBuf::from(file_name));
         self
     }
 
@@ -168,8 +168,10 @@ impl DownloadManager {
         let mut start_range: u64 = 0;
         let mut end_range: u64 = (content_length / self.max_connection as u64) - 1;
         let mut parts_suffix = 0;
-        let file_path = "./temp/".to_owned() + self.file_path.clone().unwrap().to_str().unwrap();
-        println!("File path is {}", file_path);
+        let mut cache_dir = config::default_cache_dir().unwrap();
+        cache_dir.push(self.file_name.clone().unwrap().clone());
+        println!("{:?}",cache_dir );
+        let file_path = cache_dir.to_str().unwrap();
         let url_str = self.url.clone().unwrap().to_string();
         while !(end_range > content_length) {
             let worker = Downloader::new(parts_suffix,
@@ -256,11 +258,13 @@ pub fn join_part_files(file_name: &str, file_path: &str) {
         let entry = entry.unwrap();
         if !entry.path().is_dir() {
             let mut part_fd = File::open(entry.path().display().to_string()).unwrap();
+            println!("{:?}",part_fd );
             let _ = part_fd.read_to_end(&mut buffer);
             let _ = completed.write_all(&buffer);
             buffer.clear();
         }
     }
+    fs::remove_dir_all(file_path);
 }
 
 #[test]

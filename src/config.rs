@@ -1,18 +1,31 @@
 #![allow(dead_code)]
 
 extern crate xdg;
+extern crate rustc_serialize;
 
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
 
+
+use self::rustc_serialize::json::Json;
+
 pub struct Configuration {
     pub max_connection: usize,
+    pub default_locations : Vec<String>,
 }
 
 impl Configuration {
     fn new() -> Self {
-        Configuration { max_connection: 0 }
+        Configuration { 
+            max_connection: 0,
+            default_locations:vec![
+            "Music".to_owned(),
+            "Compressed".to_owned(),
+            "Documents".to_owned(),
+            "Programs".to_owned()
+            ]
+        }
     }
 }
 
@@ -25,6 +38,7 @@ pub fn setup_config_directories() -> Result<(), ()> {
     xdg_dirs.create_config_directory(config_dir).unwrap();
     xdg_dirs.create_data_directory(data_dir).unwrap();
     xdg_dirs.create_cache_directory(cache_dir).unwrap();
+
     Ok(())
 }
 
@@ -95,11 +109,22 @@ pub fn default_config_dir() -> Option<PathBuf> {
 pub fn read_config() -> Configuration {
     let mut configuration = Configuration::new();
     let mut buff = String::new();
-    let mut path_buff = default_config_dir().unwrap();
-    path_buff.push("meltdown.config");
-    let mut config_file = File::open(path_buff).unwrap();
+    let mut config_file = default_config_dir().unwrap();
+    config_file.push("meltdown.config");
+    let mut config_file = File::open(config_file).unwrap();
     let _ = config_file.read_to_string(&mut buff);
-    let entry = buff.split(" ").collect::<Vec<&str>>();
-    configuration.max_connection = entry[1].parse::<usize>().unwrap();
+    let json_data = Json::from_str(&buff[..]).unwrap();
+    let config_obj = json_data.as_object().unwrap();
+    configuration.max_connection = config_obj.get("max_connection").unwrap().as_u64().unwrap() as usize;
     configuration
+}
+
+fn map_ext_to_location(ext: &str) -> PathBuf {
+    match ext {
+        "tar.gz" | "tar.xz" | "xz" | "zip" => PathBuf::from("./Compressed"),
+        "mp3" => PathBuf::from("./Music"),
+        "mkv" => PathBuf::from("./Videos"),
+        "exe" => PathBuf::from("./Programs"),
+        _ => PathBuf::from("./Misc")
+    }
 }

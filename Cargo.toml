@@ -8,6 +8,7 @@ hyper = "*"
 xdg = "^2.0"
 crossbeam = "0.2.5"
 walkdir = "0.1.5"
+rustc-serialize = "*"
 
 [dependencies.url]
 git = "https://github.com/servo/rust-url"
