@@ -2,6 +2,7 @@ extern crate meltdown;
 extern crate url;
 
 use url::Url;
+use std::env;
 use std::thread;
 
 use meltdown::*;
@@ -13,7 +14,8 @@ fn main() {
     let configurations = config::read_config();
     let mut manager = DownloadManager::new();
     let prefix = config::default_cache_dir().unwrap();
-    let download_url = Url::parse("https://www.python.org/ftp/python/3.5.1/Python-3.5.1.tar.xz")
+    let url_string = env::args().skip(1).collect::<Vec<String>>();
+    let download_url = Url::parse(&url_string[0])
                            .unwrap();
     let url_path_vec = download_url.path_segments().unwrap().collect::<Vec<&str>>();
     let file_name = url_path_vec[url_path_vec.len()-1].to_owned();
@@ -31,6 +33,4 @@ fn main() {
                 join_part_files(&file_name, prefix.to_str().unwrap());
             })
                 .join();
-
-
 }

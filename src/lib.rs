@@ -1,3 +1,4 @@
+
 extern crate hyper;
 extern crate url;
 extern crate crossbeam;
@@ -57,7 +58,6 @@ fn read_block<R: Read>(reader: &mut R) -> Result<ReadResult, ()> {
         Err(_) => Err(()),
     }
 }
-
 
 impl Downloader {
     fn new(id: usize,
@@ -153,7 +153,6 @@ impl DownloadManager {
         self.state = State::Ready;
     }
     pub fn start(&mut self) -> State {
-        let _ = fs::create_dir_all("./temp");
         let mut content_length: u64 = 0;
         let (tx, rx) = channel();
 
@@ -170,7 +169,6 @@ impl DownloadManager {
         let mut parts_suffix = 0;
         let mut cache_dir = config::default_cache_dir().unwrap();
         cache_dir.push(self.file_name.clone().unwrap().clone());
-        println!("{:?}",cache_dir );
         let file_path = cache_dir.to_str().unwrap();
         let url_str = self.url.clone().unwrap().to_string();
         while !(end_range > content_length) {
@@ -253,16 +251,26 @@ pub fn join_part_files(file_name: &str, file_path: &str) {
                             .open(file_name)
                             .unwrap();
     let mut buffer: Vec<u8> = Vec::new();
+    let mut fd_vec:Vec<String> = Vec::new();
     println!("Combining all part files into one");
     for entry in WalkDir::new(file_path) {
         let entry = entry.unwrap();
         if !entry.path().is_dir() {
-            let mut part_fd = File::open(entry.path().display().to_string()).unwrap();
-            println!("{:?}",part_fd );
-            let _ = part_fd.read_to_end(&mut buffer);
-            let _ = completed.write_all(&buffer);
-            buffer.clear();
+            let path = entry.path().display().to_string();
+            fd_vec.push(path.clone());
         }
+    }
+    // sort by part file ids
+    fd_vec.sort_by(|a,b|{
+        let fst = a.chars().rev().take(1).collect::<Vec<char>>()[0].to_digit(10).unwrap() as usize;
+        let snd = b.chars().rev().take(1).collect::<Vec<char>>()[0].to_digit(10).unwrap() as usize;
+        fst.cmp(&snd)
+    });
+    for i in fd_vec {
+        let mut part_fd = File::open(i).unwrap();
+        let _ = part_fd.read_to_end(&mut buffer);
+        let _ = completed.write_all(&buffer);
+        buffer.clear();
     }
     fs::remove_dir_all(file_path);
 }
