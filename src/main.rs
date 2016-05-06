@@ -15,10 +15,9 @@ fn main() {
     let mut manager = DownloadManager::new();
     let prefix = config::default_cache_dir().unwrap();
     let url_string = env::args().skip(1).collect::<Vec<String>>();
-    let download_url = Url::parse(&url_string[0])
-                           .unwrap();
+    let download_url = Url::parse(&url_string[0]).unwrap();
     let url_path_vec = download_url.path_segments().unwrap().collect::<Vec<&str>>();
-    let file_name = url_path_vec[url_path_vec.len()-1].to_owned();
+    let file_name = url_path_vec[url_path_vec.len() - 1].to_owned();
     manager.add_url(download_url.clone())
            .max_connection(configurations.max_connection)
            .file(&file_name.clone())

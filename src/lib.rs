@@ -152,18 +152,37 @@ impl DownloadManager {
     pub fn finish(&mut self) {
         self.state = State::Ready;
     }
-    pub fn start(&mut self) -> State {
-        let mut content_length: u64 = 0;
-        let (tx, rx) = channel();
 
-        match self.check_resume() {
-            (true, len) => {
-                let ContentLength(length) = len;
-                content_length = length;
+    pub fn start_as_unit(&self) {
+        let client = Client::new();
+        let mut url_str = "";
+        let mut complete_len = 0u64;
+        if let Some(ref url) = self.url {
+            url_str = url.as_str().clone();
+        };
+        let mut res = client.get(url_str)
+                            .header(Connection::keep_alive())
+                            .send()
+                            .unwrap();
+        if let Some(ref file_name) = self.file_name {
+        let file_name = format!("{}", file_name.to_str().unwrap());
+        let mut file = DownloadManager::request_file(&file_name[..]);
+        loop {
+            match read_block(&mut res) {
+                Ok(ReadResult::Payload(bytes, len)) => {
+                    complete_len += len as u64;
+                    let _ = file.write(bytes.as_slice());
+                    }
+                Ok(ReadResult::EOF) => {
+                    break;
+                    }
+                Err(_) => break,
+                }
             }
-            (false, _) => println!("Download does not support resume"),
         }
+    }
 
+    pub fn start_as_part(&mut self, content_length: u64, sender: Sender<String>) {
         let mut start_range: u64 = 0;
         let mut end_range: u64 = (content_length / self.max_connection as u64) - 1;
         let mut parts_suffix = 0;
@@ -204,16 +223,29 @@ impl DownloadManager {
 
         crossbeam::scope(|scope| {
             for i in &self.task_queue {
-                let tx = tx.clone();
+                let tx = sender.clone();
                 scope.spawn(move || {
                     i.download(tx);
                 });
             }
         });
-        State::Completed(content_length)
+
     }
 
+    pub fn start(&mut self) -> State {
+        let mut content_length: u64 = 0;
+        let (tx, rx) = channel();
 
+        match self.check_resume() {
+            (true, len) => {
+                let ContentLength(length) = len;
+                content_length = length;
+                self.start_as_part(content_length, tx);
+                State::Completed(content_length)
+            }
+            (false, _) => State::Stopped,
+        }
+    }
 
     fn check_resume(&self) -> (bool, ContentLength) {
         let client = Client::new();
@@ -251,7 +283,7 @@ pub fn join_part_files(file_name: &str, file_path: &str) {
                             .open(file_name)
                             .unwrap();
     let mut buffer: Vec<u8> = Vec::new();
-    let mut fd_vec:Vec<String> = Vec::new();
+    let mut fd_vec: Vec<String> = Vec::new();
     println!("Combining all part files into one");
     for entry in WalkDir::new(file_path) {
         let entry = entry.unwrap();
@@ -261,7 +293,7 @@ pub fn join_part_files(file_name: &str, file_path: &str) {
         }
     }
     // sort by part file ids
-    fd_vec.sort_by(|a,b|{
+    fd_vec.sort_by(|a, b| {
         let fst = a.chars().rev().take(1).collect::<Vec<char>>()[0].to_digit(10).unwrap() as usize;
         let snd = b.chars().rev().take(1).collect::<Vec<char>>()[0].to_digit(10).unwrap() as usize;
         fst.cmp(&snd)

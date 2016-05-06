@@ -12,19 +12,17 @@ use self::rustc_serialize::json::Json;
 
 pub struct Configuration {
     pub max_connection: usize,
-    pub default_locations : Vec<String>,
+    pub default_locations: Vec<String>,
 }
 
 impl Configuration {
     fn new() -> Self {
-        Configuration { 
+        Configuration {
             max_connection: 0,
-            default_locations:vec![
-            "Music".to_owned(),
-            "Compressed".to_owned(),
-            "Documents".to_owned(),
-            "Programs".to_owned()
-            ]
+            default_locations: vec!["Music".to_owned(),
+                                    "Compressed".to_owned(),
+                                    "Documents".to_owned(),
+                                    "Programs".to_owned()],
         }
     }
 }
@@ -115,7 +113,11 @@ pub fn read_config() -> Configuration {
     let _ = config_file.read_to_string(&mut buff);
     let json_data = Json::from_str(&buff[..]).unwrap();
     let config_obj = json_data.as_object().unwrap();
-    configuration.max_connection = config_obj.get("max_connection").unwrap().as_u64().unwrap() as usize;
+    configuration.max_connection = config_obj.get("max_connecti\
+                                                   on")
+                                             .unwrap()
+                                             .as_u64()
+                                             .unwrap() as usize;
     configuration
 }
 
@@ -125,6 +127,6 @@ fn map_ext_to_location(ext: &str) -> PathBuf {
         "mp3" => PathBuf::from("./Music"),
         "mkv" => PathBuf::from("./Videos"),
         "exe" => PathBuf::from("./Programs"),
-        _ => PathBuf::from("./Misc")
+        _ => PathBuf::from("./Misc"),
     }
 }
