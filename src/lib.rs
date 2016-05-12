@@ -12,6 +12,7 @@ use std::sync::mpsc::Sender;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
+use std::path::Path;
 use hyper::Url as DownloadUrl;
 use hyper::header::{Connection, AcceptRanges};
 use hyper::header::{ByteRangeSpec, Range, ContentLength};
@@ -165,18 +166,18 @@ impl DownloadManager {
                             .send()
                             .unwrap();
         if let Some(ref file_name) = self.file_name {
-        let file_name = format!("{}", file_name.to_str().unwrap());
-        let mut file = DownloadManager::request_file(&file_name[..]);
-        loop {
-            match read_block(&mut res) {
-                Ok(ReadResult::Payload(bytes, len)) => {
-                    complete_len += len as u64;
-                    let _ = file.write(bytes.as_slice());
+            let file_name = format!("{}", file_name.to_str().unwrap());
+            let mut file = DownloadManager::request_file(&file_name[..]);
+            loop {
+                match read_block(&mut res) {
+                    Ok(ReadResult::Payload(bytes, len)) => {
+                        complete_len += len as u64;
+                        let _ = file.write(bytes.as_slice());
                     }
-                Ok(ReadResult::EOF) => {
-                    break;
+                    Ok(ReadResult::EOF) => {
+                        break;
                     }
-                Err(_) => break,
+                    Err(_) => break,
                 }
             }
         }
@@ -274,17 +275,19 @@ impl DownloadManager {
     }
 }
 
-pub fn join_part_files(file_name: &str, file_path: &str) {
+pub fn join_part_files(file_name: &str, file_path: &str, extension: &str) {
+    let download_directory = config::map_ext_location(extension);
+    let full_path = download_directory.join(file_name);
+    let _ = fs::create_dir_all(download_directory);
     let mut completed = OpenOptions::new()
                             .read(true)
                             .write(true)
                             .create(true)
                             .append(true)
-                            .open(file_name)
+                            .open(full_path.clone())
                             .unwrap();
     let mut buffer: Vec<u8> = Vec::new();
     let mut fd_vec: Vec<String> = Vec::new();
-    println!("Combining all part files into one");
     for entry in WalkDir::new(file_path) {
         let entry = entry.unwrap();
         if !entry.path().is_dir() {
@@ -304,7 +307,8 @@ pub fn join_part_files(file_name: &str, file_path: &str) {
         let _ = completed.write_all(&buffer);
         buffer.clear();
     }
-    fs::remove_dir_all(file_path);
+    println!("File downloaded at {:?}", full_path);
+    let _ = fs::remove_dir_all(file_path);
 }
 
 #[test]

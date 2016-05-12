@@ -3,7 +3,7 @@
 extern crate xdg;
 extern crate rustc_serialize;
 
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::fs::File;
 use std::io::Read;
 
@@ -121,12 +121,44 @@ pub fn read_config() -> Configuration {
     configuration
 }
 
-fn map_ext_to_location(ext: &str) -> PathBuf {
+pub fn map_ext_location(ext: &str) -> PathBuf {
     match ext {
-        "tar.gz" | "tar.xz" | "xz" | "zip" => PathBuf::from("./Compressed"),
-        "mp3" => PathBuf::from("./Music"),
-        "mkv" => PathBuf::from("./Videos"),
-        "exe" => PathBuf::from("./Programs"),
-        _ => PathBuf::from("./Misc"),
+        "tar.gz" |
+        "tar.xz" |
+        "xz" |
+        "zip" |
+        "7z" => {
+            let compressed = Path::new("Compressed");
+            default_data_dir().unwrap().join(compressed)
+        }
+
+        "mp3" |
+        "wav" => {
+            let music = Path::new("Music");
+            default_data_dir().unwrap().join(music)
+        }
+
+        "mkv" |
+        "mp4" |
+        "wmv" => {
+            let videos = Path::new("Videos");
+            default_data_dir().unwrap().join(videos)
+        }
+
+        "exe" |
+        "dmg" |
+        "msi" => {
+            let videos = Path::new("Apps");
+            default_data_dir().unwrap().join(videos)
+        }
+
+        "jpg" |
+        "gif" |
+        "png" => {
+            let videos = Path::new("Images");
+            default_data_dir().unwrap().join(videos)
+        }
+
+        _ => PathBuf::from("Misc"),
     }
 }
