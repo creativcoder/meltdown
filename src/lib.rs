@@ -12,7 +12,6 @@ use std::sync::mpsc::Sender;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
-use std::path::Path;
 use hyper::Url as DownloadUrl;
 use hyper::header::{Connection, AcceptRanges};
 use hyper::header::{ByteRangeSpec, Range, ContentLength};
@@ -154,24 +153,37 @@ impl DownloadManager {
         self.state = State::Ready;
     }
 
-    pub fn start_as_unit(&self) {
+    pub fn start_as_unit(&self) -> State {
         let client = Client::new();
         let mut url_str = "";
         let mut complete_len = 0u64;
         if let Some(ref url) = self.url {
             url_str = url.as_str().clone();
+            println!("Connecting to {}", url_str);
         };
+
         let mut res = client.get(url_str)
                             .header(Connection::keep_alive())
                             .send()
                             .unwrap();
+        println!("Connecting established");
         if let Some(ref file_name) = self.file_name {
-            let file_name = format!("{}", file_name.to_str().unwrap());
-            let mut file = DownloadManager::request_file(&file_name[..]);
+            let extension = file_name.extension();
+            let download_directory = config::map_ext_location(extension.unwrap().to_str().unwrap());
+            let full_path = download_directory.join(file_name);
+            let _ = fs::create_dir_all(download_directory);
+            let mut file = OpenOptions::new()
+                            .read(true)
+                            .write(true)
+                            .create(true)
+                            .append(false)
+                            .open(full_path.clone())
+                            .unwrap();
             loop {
                 match read_block(&mut res) {
                     Ok(ReadResult::Payload(bytes, len)) => {
                         complete_len += len as u64;
+                        print!("Single Thread downloading: {:?} bytes\r", complete_len);
                         let _ = file.write(bytes.as_slice());
                     }
                     Ok(ReadResult::EOF) => {
@@ -181,6 +193,7 @@ impl DownloadManager {
                 }
             }
         }
+        State::Completed(complete_len)
     }
 
     pub fn start_as_part(&mut self, content_length: u64, sender: Sender<String>) {
@@ -236,15 +249,18 @@ impl DownloadManager {
     pub fn start(&mut self) -> State {
         let mut content_length: u64 = 0;
         let (tx, rx) = channel();
-
         match self.check_resume() {
             (true, len) => {
+                println!("Connection supports Resume");
                 let ContentLength(length) = len;
                 content_length = length;
                 self.start_as_part(content_length, tx);
                 State::Completed(content_length)
             }
-            (false, _) => State::Stopped,
+            (false, _) => {
+                println!("Connection does not support Resume");
+                self.start_as_unit()
+            },
         }
     }
 
