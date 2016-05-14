@@ -7,11 +7,11 @@ extern crate walkdir;
 
 use std::fs::OpenOptions;
 use std::io::Read;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
+use std::thread;
 use hyper::Url as DownloadUrl;
 use hyper::header::{Connection, AcceptRanges};
 use hyper::header::{ByteRangeSpec, Range, ContentLength};
@@ -21,7 +21,7 @@ use walkdir::WalkDir;
 
 mod config;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum State {
     Initial,
     Ready,
@@ -29,6 +29,14 @@ pub enum State {
     Completed(u64),
     Paused,
     Stopped,
+}
+
+#[derive(Debug)]
+pub enum Msg {
+    Start,
+    Stop,
+    Pause,
+    Resume,
 }
 
 #[derive(Debug)]
@@ -106,7 +114,7 @@ impl Downloader {
                 Err(_) => break,
             }
         }
-        println!("\nWORKER {} FINISHED", self.id);
+        println!("\nWorker {} finished", self.id);
         sender.send(file_name).unwrap();
     }
 }
@@ -173,12 +181,12 @@ impl DownloadManager {
             let full_path = download_directory.join(file_name);
             let _ = fs::create_dir_all(download_directory);
             let mut file = OpenOptions::new()
-                            .read(true)
-                            .write(true)
-                            .create(true)
-                            .append(false)
-                            .open(full_path.clone())
-                            .unwrap();
+                               .read(true)
+                               .write(true)
+                               .create(true)
+                               .append(false)
+                               .open(full_path.clone())
+                               .unwrap();
             loop {
                 match read_block(&mut res) {
                     Ok(ReadResult::Payload(bytes, len)) => {
@@ -246,7 +254,24 @@ impl DownloadManager {
 
     }
 
-    pub fn start(&mut self) -> State {
+    pub fn start(&mut self, msg_port: Receiver<Msg>) -> State {
+        // to check receive of events from main thread
+        thread::spawn(move || {
+            loop {
+                match msg_port.try_recv() {
+                    Ok(msg) => {
+                        match msg {
+                            Msg::Pause => {
+                                panic!("Download was interrupted from a Pause Msg from main thread")
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(_) => {}
+                }
+            }
+        });
+
         let mut content_length: u64 = 0;
         let (tx, rx) = channel();
         match self.check_resume() {
@@ -260,7 +285,7 @@ impl DownloadManager {
             (false, _) => {
                 println!("Connection does not support Resume");
                 self.start_as_unit()
-            },
+            }
         }
     }
 
@@ -323,8 +348,9 @@ pub fn join_part_files(file_name: &str, file_path: &str, extension: &str) {
         let _ = completed.write_all(&buffer);
         buffer.clear();
     }
-    println!("File downloaded at {:?}", full_path);
-    let _ = fs::remove_dir_all(file_path);
+    println!("File downloaded at {:?}",
+             full_path.to_str().unwrap().replace("creativcoder", "autobot"));
+    // let _ = fs::remove_dir_all(file_path);
 }
 
 #[test]
